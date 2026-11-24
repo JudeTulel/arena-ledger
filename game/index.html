@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ARENA LEDGER — 3D Skirmish</title>
+  <link rel="stylesheet" href="./style.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js" defer></script>
+  <script src="./net.js" defer></script>
+  <script src="./wallet.js" defer></script>
+</head>
+<body>
+  <div id="game-root"></div>
+
+  <!-- ================= IN-GAME HUD ================= -->
+  <div id="hud" class="hidden">
+    <div class="hud-panel hud-top-left">
+      <div class="brand-mini">ARENA LEDGER <span class="divider">/</span> <span id="hud-map">THE FOUNDRY</span></div>
+      <div class="level-line">
+        <span id="hud-level" class="level-badge">LVL 1</span>
+        <span id="hud-xp-text" class="xp-text">XP 0 / 100</span>
+      </div>
+      <div class="bar-track"><div id="xp-fill" class="bar-fill xp-fill"></div></div>
+      <div class="sub-stat"><span id="hud-char">MARINE · 100 HP</span><span class="dot-sep">·</span><span id="hud-room">ROOM arena-demo</span></div>
+    </div>
+
+    <div class="hud-panel hud-top-right">
+      <div class="kills-line">KILLS <strong id="hud-kills">0</strong></div>
+      <div id="kill-feed" class="kill-feed"></div>
+      <div id="net-status" class="net-status">LOCAL DEMO</div>
+    </div>
+
+    <div id="crosshair" aria-hidden="true"><i class="ch top"></i><i class="ch bottom"></i><i class="ch left"></i><i class="ch right"></i><i class="ch dot"></i></div>
+    <div id="hitmarker" aria-hidden="true">✕</div>
+    <div id="reward-toast" aria-live="polite"><span class="reward-plus">+1.2</span><span class="reward-label">TOKENS EARNED</span></div>
+    <div id="damage-vignette" aria-hidden="true"></div>
+    <div id="low-health" aria-hidden="true">CRITICAL</div>
+
+    <div class="hud-panel hud-bottom-left">
+      <div class="stat-label">HEALTH <strong id="hud-hp">100</strong><span id="hud-maxhp" class="muted">/ 100</span></div>
+      <div class="bar-track hp-track"><div id="hp-fill" class="bar-fill hp-fill"></div></div>
+      <div class="hint-line">WASD move · MOUSE aim · CLICK fire · R reload · 1-6 weapon</div>
+    </div>
+
+    <div class="hud-panel hud-bottom-right">
+      <div id="hud-weapon" class="weapon-name">PISTOL</div>
+      <div class="ammo-line"><strong id="hud-ammo">12</strong><span class="ammo-sep">/</span><span class="ammo-reserve">∞</span></div>
+      <div id="reload-hint" class="reload-hint">&nbsp;</div>
+    </div>
+  </div>
+
+  <!-- ================= START SCREEN ================= -->
+  <div id="start-screen">
+    <div class="start-shell">
+      <header class="start-header">
+        <div class="eyebrow">GNO.LAND PLAY-TO-EARN SKIRMISH · DEMO BUILD</div>
+        <h1>ARENA <span>LEDGER</span></h1>
+        <p class="tagline">Three battlegrounds. Three operatives. Six weapons. Every takedown pays <b>+1.2</b> tokens.</p>
+      </header>
+
+      <div class="loadout-grid">
+        <section class="loadout-card">
+          <h2><span class="num">01</span> BATTLEGROUND</h2>
+          <div id="map-list" class="option-list"></div>
+        </section>
+        <section class="loadout-card">
+          <h2><span class="num">02</span> OPERATIVE</h2>
+          <div id="char-list" class="option-list"></div>
+        </section>
+        <section class="loadout-card">
+          <h2><span class="num">03</span> LOADOUT <small id="unlock-hint">LEVEL 1 UNLOCKS</small></h2>
+          <div id="weapon-list" class="option-list"></div>
+        </section>
+      </div>
+
+      <footer class="start-footer">
+        <div class="footer-field">
+          <label for="callsign">CALLSIGN</label>
+          <input id="callsign" type="text" maxlength="16" spellcheck="false" autocomplete="off" />
+        </div>
+        <div class="footer-field wallet-field">
+          <label>WALLET STATUS</label>
+          <div id="wallet-status" class="wallet-status">CHECKING…</div>
+        </div>
+        <button id="play-btn" type="button"><span class="play-icon">▶</span> ENTER MATCH <small>2 TOKENS</small></button>
+        <div class="hint-strip">WASD move &nbsp;·&nbsp; mouse look &nbsp;·&nbsp; click to fire &nbsp;·&nbsp; R reload &nbsp;·&nbsp; 1–6 swap weapon &nbsp;·&nbsp; ESC release cursor</div>
+      </footer>
+    </div>
+  </div>
+
+  <div id="resume-overlay" class="hidden"><div class="resume-box"><span>▶</span> CLICK TO RESUME <small>ESC releases the cursor</small></div></div>
+  <div id="respawn-overlay" class="hidden"><div class="respawn-box"><span class="respawn-title">DOWNED</span><span class="respawn-sub">RESPAWNING IN <b id="respawn-count">2</b>…</span></div></div>
+
+  <script type="module" src="./game.js"></script>
+</body>
+</html>
