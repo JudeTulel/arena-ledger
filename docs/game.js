@@ -20,7 +20,7 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.3;
 renderer.autoClear = false; // we render the world, then the viewmodel over it
 $('game-root').appendChild(renderer.domElement);
 const canvas = renderer.domElement;

@@ -42,7 +42,7 @@ function buildFoundry(scene) {
     sunColor: 0xffd6a5,
     sunIntensity: 0.95,
     ambientColor: 0xa9c6dd,
-    ambientIntensity: 0.45,
+    ambientIntensity: 0.8,
     bounds: { minX: -29, maxX: 29, minZ: -29, maxZ: 29 },
     playerSpawns: [new THREE.Vector3(0, 0, 21), new THREE.Vector3(4, 0, 23)],
     botSpawns: [
@@ -114,6 +114,7 @@ function buildJungle(scene) {
     hemiSky: 0x9fd99a,
     hemiGround: 0x1d331f,
     hemiIntensity: 0.95,
+    ambientIntensity: 0.4,
     sunColor: 0xffe6a8,
     sunIntensity: 0.8,
     sunPos: [18, 38, -12],
