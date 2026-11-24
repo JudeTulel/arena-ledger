@@ -187,11 +187,13 @@ function wireWalletActions() {
 }
 
 function detectWallet() {
-  if (typeof window.ArenaWallet !== 'undefined' && window.ArenaWallet) {
-    setWalletStatus('WALLET DETECTED · READY — CLICK ENTER MATCH TO CONNECT', 'ready');
+  const hasAdena = typeof window.adena !== 'undefined' && window.adena;
+  const hasBridge = typeof window.ArenaWallet !== 'undefined' && window.ArenaWallet;
+  if (hasBridge && hasAdena) {
+    setWalletStatus('ADENA DETECTED · CLICK ENTER MATCH TO CONNECT', 'ready');
     wireWalletActions();
   } else {
-    setWalletStatus('NO WALLET DETECTED · DEMO MODE (REWARDS SIMULATED)', 'error');
+    setWalletStatus('ADENA NOT INSTALLED · DEMO MODE (REWARDS SIMULATED)', 'error');
     const f = $('faucet-btn'), c = $('claim-btn');
     if (f) f.disabled = true;
     if (c) c.disabled = true;
