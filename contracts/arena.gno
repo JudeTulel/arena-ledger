@@ -26,6 +26,9 @@ const (
 
 	startingBalance int64 = entryFee // onboarding grant: one free first entry
 
+	faucetAmount   int64 = 10000 // 10 tokens per testnet faucet grant
+	faucetCooldown int64 = 21600 // 6 hours between grants
+
 	xpPerKill int64 = 40 // base XP for a kill
 	xpPerWin  int64 = 60 // base XP for a win
 
@@ -56,7 +59,8 @@ type Player struct {
 	Kills   int
 	Deaths  int
 	Wins    int
-	Entries int
+	Entries    int
+	LastFaucet int64
 }
 
 var (
@@ -264,6 +268,31 @@ func ReportWin(cur realm) {
 	chain.Emit("Win", "player", a.String(), "xp", strconv.FormatInt(gained, 10))
 }
 
+// canFaucet enforces the testnet grant cooldown. A zero timestamp means
+// the player has never taken a grant.
+func canFaucet(last, now int64) bool {
+	return last == 0 || now-last >= faucetCooldown
+}
+
+// Faucet grants testnet tokens so players can keep entering matches after
+// their one-token onboarding balance is spent. This is a testnet-only
+// convenience; a production realm would use a real token sale or bridge.
+func Faucet(cur realm) {
+	if !cur.Previous().IsUserCall() {
+		panic("Faucet: EOA calls only")
+	}
+	a := callerOf(cur)
+	p := getOrCreate(a)
+	now := time.Now().Unix()
+	if !canFaucet(p.LastFaucet, now) {
+		panic("Faucet: wait before the next grant")
+	}
+	p.Balance += faucetAmount
+	p.LastFaucet = now
+	chain.Emit("Faucet", "player", a.String(), "amount", formatTokens(faucetAmount),
+		"amount_mtok", strconv.FormatInt(faucetAmount, 10))
+}
+
 // Claim moves the caller's pending kill rewards into their spendable
 // balance so they can pay for another entry.
 func Claim(cur realm) {
@@ -348,6 +377,22 @@ func Balance(a address) int64 {
 	return 0
 }
 
+// Pending returns a player's unclaimed kill earnings in millitokens.
+func Pending(a address) int64 {
+	if p := playerFor(a); p != nil {
+		return p.Pending
+	}
+	return 0
+}
+
+// Level returns a player's current level (0-3).
+func Level(a address) int {
+	if p := playerFor(a); p != nil {
+		return levelForXP(p.XP)
+	}
+	return 0
+}
+
 // Render draws the realm documentation, gno-forms for every public
 // crossing function, and the current leaderboard.
 func Render(path string) string {
@@ -381,6 +426,7 @@ func Render(path string) string {
 	out += "<gno-form exec=\"ReportKill\">\n<gno-input name=\"victim\" type=\"text\" placeholder=\"Victim g1... address\" required=\"true\" />\n<gno-button label=\"Report kill\" />\n</gno-form>\n\n"
 	out += "<gno-form exec=\"ReportWin\">\n<gno-button label=\"Report win\" />\n</gno-form>\n\n"
 	out += "<gno-form exec=\"Claim\">\n<gno-button label=\"Claim pending bounty\" />\n</gno-form>\n\n"
+	out += "<gno-form exec=\"Faucet\">\n<gno-button label=\"Get 10 testnet tokens\" />\n</gno-form>\n\n"
 
 	out += "## Leaderboard\n\n"
 	out += "| # | Player | Level | XP | Kills | Wins | Balance |\n"

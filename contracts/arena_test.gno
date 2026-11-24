@@ -33,6 +33,22 @@ func TestEntrySplit(t *testing.T) {
 	}
 }
 
+// TestFaucetCooldown verifies the 6-hour testnet grant gate.
+func TestFaucetCooldown(t *testing.T) {
+	if !canFaucet(0, 1000) {
+		t.Fatal("a new player should be able to take a grant")
+	}
+	if canFaucet(1000, 1000+faucetCooldown-1) {
+		t.Fatal("grant taken too soon should be refused")
+	}
+	if !canFaucet(1000, 1000+faucetCooldown) {
+		t.Fatal("grant after the cooldown should be allowed")
+	}
+	if faucetAmount != 10000 || faucetCooldown != 21600 {
+		t.Fatalf("unexpected faucet settings: %d/%d", faucetAmount, faucetCooldown)
+	}
+}
+
 // TestFormatTokens checks the decimal strings the game client renders as
 // "+1.2" and "+2.4".
 func TestFormatTokens(t *testing.T) {

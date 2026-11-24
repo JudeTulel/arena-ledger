@@ -215,12 +215,40 @@
     }
   }
 
+  // Contract amounts are millitokens (1 token = 1000 mtok).
+  function formatMTok(mtok) {
+    var neg = mtok < 0, n = Math.abs(mtok);
+    var whole = Math.floor(n / 1000), frac = n % 1000;
+    var s = String(whole);
+    if (frac) {
+      var f = String(frac);
+      while (f.length < 3) f = '0' + f;
+      f = f.replace(/0+$/, '');
+      s += '.' + f;
+    }
+    return (neg ? '-' : '') + s;
+  }
+
+  // The authoritative reward is the change in the realm's own balance
+  // ledger, not tx events (Gno RPC cannot filter events by attribute).
+  function waitForBalanceIncrease(before, tries) {
+    if (tries <= 0) return Promise.resolve(null);
+    return balance().then(function (now) {
+      if (now > before) return now - before;
+      return new Promise(function (resolve) {
+        setTimeout(function () { resolve(waitForBalanceIncrease(before, tries - 1)); }, 2000);
+      });
+    }).catch(function () { return null; });
+  }
+
   function handleKillReward(res, out, args) {
     var victim = args.length > 1 ? args[1] : null;
     var amount = amountFromResult(res);
     var estimated = amount == null;
     emitReward({
-      amount: estimated ? 0 : amount,
+      amount: estimated ? 0 : amount / 1000,
+      mtok: estimated ? 0 : amount,
+      amountText: estimated ? '0' : formatMTok(amount),
       from: victim,
       txHash: out.txHash || null,
       estimated: estimated
@@ -292,7 +320,6 @@
         gasWanted: GAS_WANTED
       })).then(function (res) {
         var out = normalizeTx(res);
-        if (out.ok && func === 'ReportKill') handleKillReward(res, out, args);
         return out;
       }).catch(function (e) {
         return { ok: false, error: friendlyError(e) };
@@ -334,40 +361,34 @@
     }
   }
 
-  function balance() {
+  // Evaluate one read-only getter on the realm. Response is base64 text
+  // like '("42" int64)'; the first integer is the value in millitokens.
+  function qevalNumber(expr) {
+    var url = RPC + '/abci_query?path=%22vm/qeval%22&data=0x' + utf8Hex(expr);
+    return fetchJSON(url).then(function (j) {
+      var resp = j.result && j.result.response;
+      if (!resp) throw new Error('No abci_query response');
+      var rb = resp.ResponseBase || resp;
+      if (rb.Error) throw new Error(String(rb.Error));
+      if (!rb.Data) throw new Error('Empty qeval result');
+      var text;
+      try { text = atob(rb.Data); } catch (e) { throw new Error('Bad base64 result'); }
+      var m = text.match(/(\d+)/);
+      if (!m) throw new Error('Unparseable qeval result');
+      var n = Number(m[1]);
+      return isFinite(n) ? n : 0;
+    });
+  }
+
+  function readAddressGetter(name) {
     var addr = currentAddress;
     if (!addr) return Promise.resolve(0);
-
-    // Try the address-scoped getter, then a no-arg getter, then give up (0).
-    var exprs = [
-      REALM_PKG_PATH + '.Balance("' + addr + '")',
-      REALM_PKG_PATH + '.Balance()'
-    ];
-
-    function tryExpr(i) {
-      if (i >= exprs.length) return Promise.resolve(0);
-      var url = RPC + '/abci_query?path=%22vm/qeval%22&data=0x' + utf8Hex(exprs[i]);
-      return fetchJSON(url).then(function (j) {
-        var resp = j.result && j.result.response;
-        if (!resp) throw new Error('No abci_query response');
-        var rb = resp.ResponseBase || resp;
-        if (rb.Error) throw new Error(String(rb.Error));
-        var data = rb.Data;
-        if (!data) throw new Error('Empty qeval result');
-        // Browser atob decodes the base64 result, e.g. '("42" int)'.
-        var text;
-        try { text = atob(data); } catch (e) { throw new Error('Bad base64 result'); }
-        var m = text.match(/(\d+)/);
-        if (!m) throw new Error('Unparseable qeval result');
-        var n = Number(m[1]);
-        return isFinite(n) ? n : 0;
-      }).catch(function () {
-        return tryExpr(i + 1);
-      });
-    }
-
-    return tryExpr(0).catch(function () { return 0; });
+    var q = String.fromCharCode(34); // a double quote, without escaping ambiguity
+    return qevalNumber(REALM_PKG_PATH + '.' + name + '(' + q + addr + q + ')')
+      .catch(function () { return 0; });
   }
+
+  function balance() { return readAddressGetter('Balance'); }
 
   // --------------------------------------------------------------- export
   global.ArenaWallet = {
@@ -383,7 +404,46 @@
     },
     reportKill: function (matchId, victimAddress, pkgPath) {
       var victim = victimAddress == null ? '' : String(victimAddress);
-      return callRealm('ReportKill', [victim], pkgPath);
+      return balance().then(function (before) {
+        return callRealm('ReportKill', [victim], pkgPath).then(function (r) {
+          if (!r.ok) return r;
+          return waitForBalanceIncrease(before, 10).then(function (delta) {
+            if (delta && delta > 0) {
+              emitReward({
+                amount: delta / 1000,
+                mtok: delta,
+                amountText: formatMTok(delta),
+                from: victim,
+                txHash: r.txHash || null,
+                estimated: false
+              });
+            } else {
+              handleKillReward(r.raw || {}, r, [victim]);
+            }
+            return r;
+          });
+        });
+      });
+    },
+    faucet: function (pkgPath) {
+      return callRealm('Faucet', [], pkgPath);
+    },
+    claim: function (pkgPath) {
+      return callRealm('Claim', [], pkgPath);
+    },
+    pending: function () { return readAddressGetter('Pending'); },
+    balanceTokens: function () {
+      return balance().then(function (mtok) { return mtok / 1000; });
+    },
+    status: function () {
+      return Promise.all([balance(), readAddressGetter('Pending')]).then(function (v) {
+        return {
+          address: currentAddress,
+          balanceMTok: v[0], balanceTokens: v[0] / 1000,
+          pendingMTok: v[1], pendingTokens: v[1] / 1000,
+          balanceText: formatMTok(v[0]), pendingText: formatMTok(v[1])
+        };
+      });
     },
     balance: balance,
     onReward: function (cb) {

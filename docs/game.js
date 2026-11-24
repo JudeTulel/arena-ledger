@@ -148,11 +148,53 @@ function setWalletStatus(text, cls = '') {
   el.className = 'wallet-status' + (cls ? ' ' + cls : '');
 }
 
+function refreshWalletStatus() {
+  const w = window.ArenaWallet;
+  if (!w || typeof w.status !== 'function' || !w.address()) return;
+  w.status().then(s => {
+    if (!s.address) return;
+    const short = s.address.slice(0, 8) + '…' + s.address.slice(-5);
+    setWalletStatus(short + ' · ' + s.balanceText + ' TOKENS · ' + s.pendingText + ' PENDING', 'ready');
+  }).catch(() => {});
+}
+
+function wireWalletActions() {
+  const w = window.ArenaWallet;
+  const faucetBtn = $('faucet-btn'), claimBtn = $('claim-btn');
+  if (!w || !faucetBtn || !claimBtn || faucetBtn.dataset.wired) return;
+  faucetBtn.dataset.wired = '1';
+  const run = (fn, label) => {
+    if (typeof w[fn] !== 'function') return;
+    faucetBtn.disabled = claimBtn.disabled = true;
+    Promise.resolve(w[fn]()).then(r => {
+      const failed = r && r.ok === false;
+      addFeed(failed ? label + ' FAILED · ' + (r.error || '') : label + ' CONFIRMED', failed ? 'danger' : 'gold');
+      refreshWalletStatus();
+    }).catch(() => addFeed(label + ' FAILED', 'danger'))
+      .then(() => { faucetBtn.disabled = claimBtn.disabled = false; });
+  };
+  faucetBtn.addEventListener('click', () => run('faucet', 'FAUCET'));
+  claimBtn.addEventListener('click', () => run('claim', 'CLAIM'));
+  if (typeof w.onReward === 'function') {
+    w.onReward(payload => {
+      if (payload && payload.amountText && Number(payload.amountText) > 0) {
+        showRewardToast('+' + payload.amountText);
+        addFeed('BOUNTY RECEIVED · +' + payload.amountText + ' TOKENS', 'gold');
+      }
+      refreshWalletStatus();
+    });
+  }
+}
+
 function detectWallet() {
   if (typeof window.ArenaWallet !== 'undefined' && window.ArenaWallet) {
     setWalletStatus('WALLET DETECTED · READY — CLICK ENTER MATCH TO CONNECT', 'ready');
+    wireWalletActions();
   } else {
     setWalletStatus('NO WALLET DETECTED · DEMO MODE (REWARDS SIMULATED)', 'error');
+    const f = $('faucet-btn'), c = $('claim-btn');
+    if (f) f.disabled = true;
+    if (c) c.disabled = true;
   }
 }
 
@@ -458,8 +500,9 @@ function addFeed(text, cls = '') {
   setTimeout(() => el.remove(), 5200);
 }
 
-function showRewardToast() {
+function showRewardToast(text) {
   const el = $('reward-toast');
+  if (text) el.textContent = text;
   el.classList.remove('show');
   void el.offsetWidth; // restart the CSS animation
   el.classList.add('show');
@@ -481,7 +524,7 @@ function registerKill(ent, weapon) {
     renderWeaponCards();
   }
   addFeed(`YOU ▸ ${ent.name}  [${weapon.name}]`, 'gold');
-  showRewardToast(); // economy pays KILL_REWARD tokens per takedown
+  if (!state.walletConnected) showRewardToast(); // wallet path uses the exact on-chain amount
 }
 
 function killPlayer() {
@@ -785,12 +828,15 @@ async function startGame() {
         throw new Error(connected.error || 'Wallet not connected');
       }
       state.walletConnected = true;
+      wireWalletActions();
+      refreshWalletStatus();
       setWalletStatus('WALLET CONNECTED · ENTERING MATCH', 'ready');
       if (typeof wallet.enter === 'function') {
         const pkgPath = wallet.PKG_PATH || MATCH_PKG_PATH;
         const entered = await wallet.enter(state.matchId, pkgPath);
         if (entered && entered.ok === false) throw new Error(entered.error || 'Entry failed');
       }
+      refreshWalletStatus();
       addFeed(`ENTRY PAID · 2 TOKENS · REWARD ${KILL_REWARD}/KILL`, 'gold');
     } catch (err) {
       console.warn('ArenaWallet unavailable; continuing in demo mode.', err);
