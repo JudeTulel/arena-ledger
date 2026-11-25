@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"chain"
+	"chain/banker"
+	"chain/runtime/unsafe"
 
 	"gno.land/p/nt/avl/v0"
 	"gno.land/p/nt/markdown/sanitize/v0"
@@ -71,6 +73,7 @@ var (
 	totalKills       int64
 	totalBoostKills  int64
 	totalDistributed int64
+	backing          int64 // ugnot held to back outstanding play tokens
 )
 
 func init() {
@@ -293,6 +296,46 @@ func Faucet(cur realm) {
 		"amount_mtok", strconv.FormatInt(faucetAmount, 10))
 }
 
+// Buy swaps attached GNOT for play tokens at 1 ugnot = 1 millitoken.
+// The received coins stay at the realm address as backing for withdrawals.
+func Buy(cur realm) {
+	if !cur.Previous().IsUserCall() {
+		panic("Buy: EOA calls only")
+	}
+	coins := unsafe.OriginSend()
+	if len(coins) != 1 || coins[0].Denom != "ugnot" || coins[0].Amount <= 0 {
+		panic("Buy: send ugnot to buy tokens")
+	}
+	a := callerOf(cur)
+	p := getOrCreate(a)
+	p.Balance += coins[0].Amount
+	backing += coins[0].Amount
+	chain.Emit("Buy", "player", a.String(), "ugnot", strconv.FormatInt(coins[0].Amount, 10),
+		"tokens", formatTokens(coins[0].Amount))
+}
+
+// canWithdraw verifies both the internal credit and the realm's GNOT backing.
+func canWithdraw(balance, available, mtok int64) bool {
+	return mtok > 0 && mtok <= balance && mtok <= available
+}
+
+// Withdraw burns play tokens and sends the equivalent ugnot from the realm.
+func Withdraw(cur realm, mtok int64) {
+	if !cur.Previous().IsUserCall() {
+		panic("Withdraw: EOA calls only")
+	}
+	a := callerOf(cur)
+	p := playerFor(a)
+	if p == nil || !canWithdraw(p.Balance, backing, mtok) {
+		panic("Withdraw: not enough credit or backing")
+	}
+	p.Balance -= mtok
+	backing -= mtok
+	b := banker.NewBanker(banker.BankerTypeRealmSend, cur)
+	b.SendCoins(cur.Address(), a, chain.Coins{{Denom: "ugnot", Amount: mtok}})
+	chain.Emit("Withdraw", "player", a.String(), "amount_mtok", strconv.FormatInt(mtok, 10))
+}
+
 // Claim moves the caller's pending kill rewards into their spendable
 // balance so they can pay for another entry.
 func Claim(cur realm) {
@@ -385,6 +428,9 @@ func Pending(a address) int64 {
 	return 0
 }
 
+// Backing returns the ugnot held by the realm to back play tokens.
+func Backing() int64 { return backing }
+
 // Level returns a player's current level (0-3).
 func Level(a address) int {
 	if p := playerFor(a); p != nil {
@@ -427,6 +473,8 @@ func Render(path string) string {
 	out += "<gno-form exec=\"ReportWin\">\n<gno-button label=\"Report win\" />\n</gno-form>\n\n"
 	out += "<gno-form exec=\"Claim\">\n<gno-button label=\"Claim pending bounty\" />\n</gno-form>\n\n"
 	out += "<gno-form exec=\"Faucet\">\n<gno-button label=\"Get 10 testnet tokens\" />\n</gno-form>\n\n"
+	out += "Swap GNOT for play tokens with Buy by attaching ugnot to the call (1 ugnot = 1 millitoken). Withdraw converts play tokens back to ugnot from the realm's backing.\n\n"
+	out += "<gno-form exec=\"Withdraw\">\n<gno-input name=\"mtok\" type=\"number\" placeholder=\"Millitokens to withdraw\" required=\"true\" />\n<gno-button label=\"Withdraw ugnot\" />\n</gno-form>\n\n"
 
 	out += "## Leaderboard\n\n"
 	out += "| # | Player | Level | XP | Kills | Wins | Balance |\n"

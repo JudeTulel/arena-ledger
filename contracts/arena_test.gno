@@ -33,6 +33,22 @@ func TestEntrySplit(t *testing.T) {
 	}
 }
 
+// TestCanWithdraw verifies the credit-and-backing gate.
+func TestCanWithdraw(t *testing.T) {
+	if !canWithdraw(1200, 5000, 1200) {
+		t.Fatal("valid withdraw should pass")
+	}
+	if canWithdraw(1200, 5000, 1201) {
+		t.Fatal("withdraw above credit should fail")
+	}
+	if canWithdraw(5000, 1200, 1201) {
+		t.Fatal("withdraw above backing should fail")
+	}
+	if canWithdraw(5000, 5000, 0) {
+		t.Fatal("zero withdraw should fail")
+	}
+}
+
 // TestFaucetCooldown verifies the 6-hour testnet grant gate.
 func TestFaucetCooldown(t *testing.T) {
 	if !canFaucet(0, 1000) {

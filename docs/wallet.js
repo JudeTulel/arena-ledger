@@ -295,7 +295,7 @@
   }
 
   // ----------------------------------------------------------- realm calling
-  function callRealm(func, args, pkgPath) {
+  function callRealm(func, args, pkgPath, send) {
     var a = getAdena();
     if (!a || typeof a.DoContract !== 'function') {
       return Promise.resolve({ ok: false, error: 'Adena wallet not available. Install it and connect first.' });
@@ -308,7 +308,7 @@
       value: {
         caller: currentAddress,
         func: func,
-        send: '',
+        send: send || '',
         pkg_path: pkgPath || REALM_PKG_PATH,
         args: args
       }
@@ -425,6 +425,23 @@
         });
       });
     },
+    buy: function (amountGnot, pkgPath) {
+      var ugnot = Math.round(Number(amountGnot) * 1000000);
+      if (!(ugnot > 0)) {
+        return Promise.resolve({ ok: false, error: 'Buy amount must be greater than zero.' });
+      }
+      return callRealm('Buy', [], pkgPath, String(ugnot) + 'ugnot');
+    },
+    withdraw: function (mtok, pkgPath) {
+      var amount = Math.floor(Number(mtok));
+      if (!(amount > 0)) {
+        return Promise.resolve({ ok: false, error: 'Withdraw amount must be greater than zero.' });
+      }
+      return callRealm('Withdraw', [String(amount)], pkgPath);
+    },
+    backing: function () {
+      return qevalNumber(REALM_PKG_PATH + '.Backing()').catch(function () { return 0; });
+    },
     faucet: function (pkgPath) {
       return callRealm('Faucet', [], pkgPath);
     },
@@ -436,11 +453,16 @@
       return balance().then(function (mtok) { return mtok / 1000; });
     },
     status: function () {
-      return Promise.all([balance(), readAddressGetter('Pending')]).then(function (v) {
+      return Promise.all([
+        balance(),
+        readAddressGetter('Pending'),
+        qevalNumber(REALM_PKG_PATH + '.Backing()').catch(function () { return 0; })
+      ]).then(function (v) {
         return {
           address: currentAddress,
           balanceMTok: v[0], balanceTokens: v[0] / 1000,
           pendingMTok: v[1], pendingTokens: v[1] / 1000,
+          backingMTok: v[2], backingTokens: v[2] / 1000,
           balanceText: formatMTok(v[0]), pendingText: formatMTok(v[1])
         };
       });

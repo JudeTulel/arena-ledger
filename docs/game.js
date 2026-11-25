@@ -163,18 +163,27 @@ function wireWalletActions() {
   const faucetBtn = $('faucet-btn'), claimBtn = $('claim-btn');
   if (!w || !faucetBtn || !claimBtn || faucetBtn.dataset.wired) return;
   faucetBtn.dataset.wired = '1';
-  const run = (fn, label) => {
+  const buyBtn = $('buy-btn'), withdrawBtn = $('withdraw-btn');
+  const buttons = [buyBtn, faucetBtn, claimBtn, withdrawBtn].filter(Boolean);
+  const run = (fn, label, arg) => {
     if (typeof w[fn] !== 'function') return;
-    faucetBtn.disabled = claimBtn.disabled = true;
-    Promise.resolve(w[fn]()).then(r => {
+    buttons.forEach(b => { b.disabled = true; });
+    Promise.resolve(arg === undefined ? w[fn]() : w[fn](arg)).then(r => {
       const failed = r && r.ok === false;
       addFeed(failed ? label + ' FAILED · ' + (r.error || '') : label + ' CONFIRMED', failed ? 'danger' : 'gold');
       refreshWalletStatus();
     }).catch(() => addFeed(label + ' FAILED', 'danger'))
-      .then(() => { faucetBtn.disabled = claimBtn.disabled = false; });
+      .then(() => { buttons.forEach(b => { b.disabled = false; }); });
   };
+  if (buyBtn) buyBtn.addEventListener('click', () => run('buy', 'BUY', 0.002));
   faucetBtn.addEventListener('click', () => run('faucet', 'FAUCET'));
   claimBtn.addEventListener('click', () => run('claim', 'CLAIM'));
+  if (withdrawBtn) {
+    withdrawBtn.addEventListener('click', () => {
+      Promise.resolve(typeof w.pending === 'function' ? w.pending() : 0)
+        .then(p => run('withdraw', 'WITHDRAW', p));
+    });
+  }
   if (typeof w.onReward === 'function') {
     w.onReward(payload => {
       if (payload && payload.amountText && Number(payload.amountText) > 0) {
@@ -194,9 +203,10 @@ function detectWallet() {
     wireWalletActions();
   } else {
     setWalletStatus('ADENA NOT INSTALLED · DEMO MODE (REWARDS SIMULATED)', 'error');
-    const f = $('faucet-btn'), c = $('claim-btn');
-    if (f) f.disabled = true;
-    if (c) c.disabled = true;
+    ['buy-btn', 'faucet-btn', 'claim-btn', 'withdraw-btn'].forEach(id => {
+      const b = $(id);
+      if (b) b.disabled = true;
+    });
   }
 }
 
