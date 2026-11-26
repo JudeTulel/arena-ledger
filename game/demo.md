@@ -1,6 +1,6 @@
 # Demo walkthrough
 
-A narrated 31-second demo is at [`docs/demo.mp4`](demo.mp4).
+A narrated 31-second demo is at [`game/demo.mp4`](demo.mp4).
 
 ## Play loop
 
