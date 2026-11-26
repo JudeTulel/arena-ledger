@@ -1,6 +1,7 @@
 // ARENA LEDGER — self-contained three.js first-person shooter client.
 // Optional globals: window.ArenaNet and window.ArenaWallet (loaded via <script> tags).
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { MAPS, getMap } from './maps.js';
 import {
   CHARACTERS, WEAPONS, MASTERY_XP, XP_PER_KILL, KILL_REWARD, MATCH_PKG_PATH,
@@ -250,8 +251,47 @@ function createAvatar(name, color, kind, id, hp) {
   gun.position.set(0.32, 1.2, -0.4);
   group.add(gun);
 
-  group.traverse((obj) => { if (obj.isMesh) obj.userData.entity = entity; });
+  entity.procMeshes = [];
+  group.traverse((obj) => {
+    if (obj.isMesh) { obj.userData.entity = entity; entity.procMeshes.push(obj); }
+  });
+
+  // Optional GLB override. Missing or broken models fall back to the
+  // procedural body above, so the game never depends on downloaded assets.
+  const model = characterModels.get(state.charId) || characterModels.get('marine');
+  if (model) {
+    const clone = model.clone(true);
+    const box = new THREE.Box3().setFromObject(clone);
+    const height = box.max.y - box.min.y;
+    if (height > 0) clone.scale.setScalar(1.9 / height);
+    const scaled = new THREE.Box3().setFromObject(clone);
+    clone.position.y -= scaled.min.y;
+    clone.traverse((obj) => { if (obj.isMesh) obj.userData.entity = entity; });
+    group.add(clone);
+    entity.procMeshes.forEach(m => { m.visible = false; });
+  }
   return entity;
+}
+
+const characterModels = new Map();
+
+async function loadCharacterModels() {
+  try {
+    const res = await fetch('./models/manifest.json');
+    if (!res.ok) return;
+    const manifest = await res.json();
+    const loader = new GLTFLoader();
+    await Promise.all(Object.entries(manifest).map(async ([key, url]) => {
+      try {
+        const gltf = await loader.loadAsync(url);
+        characterModels.set(key, gltf.scene);
+      } catch (err) {
+        console.warn('Arena Ledger: model failed to load, using procedural body:', key, err);
+      }
+    }));
+  } catch (err) {
+    // No manifest: procedural characters are the default.
+  }
 }
 
 function colorFromId(id) {
@@ -954,6 +994,7 @@ $('callsign').value = state.callsign;
 renderMapCards();
 renderCharacterCards();
 renderWeaponCards();
+loadCharacterModels();
 detectWallet();
 
 // Small inspection surface for demos and automated smoke tests.
